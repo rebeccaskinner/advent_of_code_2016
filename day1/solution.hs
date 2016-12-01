@@ -9,7 +9,7 @@ data RelativeDirection = DirLeft | DirRight deriving (Eq, Show)
 data MoveInstr = MoveInstr Direction Int deriving (Eq, Show)
 data RelativeMove = RelativeMove RelativeDirection Int deriving (Eq, Show)
 type Coordinate = (Int, Int)
-data Location = Location Direction Coordinate deriving (Eq, Show)
+data Location = Location Direction Coordinate [Coordinate] deriving (Eq, Show)
 
 instance Enum Direction where
   fromEnum North = 0
@@ -44,18 +44,29 @@ parseInstruction (dir:amt) =
           instr' = fromMaybe parseErr parsedInt
         in (RelativeMove rel) <$> instr'
 
+coordRange :: Coordinate -> Coordinate -> [Coordinate]
+coordRange (x,y) (x',y') =
+  if x == x' then
+    [(x, y'') | y'' <- stepSeq y y']
+  else
+    [(x'', y) | x'' <- stepSeq x x']
+  where
+    stepSeq :: Int -> Int -> [Int]
+    stepSeq a b = if a > b then [a,a-1..b] else [a..b]
+
 updateLocation :: Location -> RelativeMove -> Location
-updateLocation (Location dir spot) (RelativeMove moveDir amount) =
+updateLocation (Location dir spot hist) (RelativeMove moveDir amount) =
   let dir' = updateDirection dir moveDir
       newCardinal = updateDirection dir moveDir
       instr = MoveInstr newCardinal amount
       spot' = updateCoord spot instr
-   in Location dir' spot'
+      hist' = hist ++ (tail $ coordRange spot spot')
+   in Location dir' spot' hist'
 
 
 move :: [String] -> Either String Location
 move instructions =
-  let start = Location North (0,0)
+  let start = Location North (0,0) []
       moves = sequence $ map parseInstruction instructions
   in foldl updateLocation start <$> moves
 
@@ -63,9 +74,22 @@ parseInstructions :: String -> [String]
 parseInstructions = words . filter (/= ',')
 
 absolutePostion :: Location -> Int
-absolutePostion (Location _ (x,y)) = (abs x) + (abs y)
+absolutePostion (Location _ coord _) = sumCoord coord
+
+sumCoord :: Coordinate -> Int
+sumCoord (x,y) = (abs x) + (abs y)
+
+firstDoubleVisit :: [Coordinate] -> Maybe Coordinate
+firstDoubleVisit [] = Nothing
+firstDoubleVisit (first:rest) = if any (==first) rest then Just first else firstDoubleVisit rest
+
+locHist :: Location -> [Coordinate]
+locHist (Location _ current history) = history
 
 main = do
   contents <- (head <$> getArgs) >>= readFile
   let moveResults = move (parseInstructions contents)
-  print $ absolutePostion <$> moveResults
+  case firstDoubleVisit . locHist <$> moveResults of
+    Left s -> print s
+    Right (Just coords) -> (print moveResults) >> print "\n" >> (print $ sumCoord coords)
+    otherwise -> print "error"
