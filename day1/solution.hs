@@ -40,9 +40,9 @@ parseInstruction (dir:amt) =
       parseInstruction' rel s =
         let
           parseErr = Left "Unable to parse int"
-          parsedInt = Right <$> (readMaybe s)
+          parsedInt = Right <$> readMaybe s
           instr' = fromMaybe parseErr parsedInt
-        in (RelativeMove rel) <$> instr'
+        in RelativeMove rel <$> instr'
 
 coordRange :: Coordinate -> Coordinate -> [Coordinate]
 coordRange (x,y) (x',y') =
@@ -60,14 +60,14 @@ updateLocation (Location dir spot hist) (RelativeMove moveDir amount) =
       newCardinal = updateDirection dir moveDir
       instr = MoveInstr newCardinal amount
       spot' = updateCoord spot instr
-      hist' = hist ++ (tail $ coordRange spot spot')
+      hist' = hist ++ tail (coordRange spot spot')
    in Location dir' spot' hist'
 
 
 move :: [String] -> Either String Location
 move instructions =
   let start = Location North (0,0) []
-      moves = sequence $ map parseInstruction instructions
+      moves = mapM parseInstruction instructions
   in foldl updateLocation start <$> moves
 
 parseInstructions :: String -> [String]
@@ -77,11 +77,11 @@ absolutePostion :: Location -> Int
 absolutePostion (Location _ coord _) = sumCoord coord
 
 sumCoord :: Coordinate -> Int
-sumCoord (x,y) = (abs x) + (abs y)
+sumCoord (x,y) = abs x + abs y
 
 firstDoubleVisit :: [Coordinate] -> Maybe Coordinate
 firstDoubleVisit [] = Nothing
-firstDoubleVisit (first:rest) = if any (==first) rest then Just first else firstDoubleVisit rest
+firstDoubleVisit (first:rest) = if first `elem` rest then Just first else firstDoubleVisit rest
 
 locHist :: Location -> [Coordinate]
 locHist (Location _ current history) = history
@@ -93,4 +93,4 @@ main = do
   case firstDoubleVisit . locHist <$> moveResults of
     Left s -> print s
     Right (Just coords) -> putStr "first passed twice: " >> (print $ sumCoord coords)
-    otherwise -> print "error"
+    _ -> print "error"
