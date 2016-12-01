@@ -89,7 +89,8 @@ locHist (Location _ current history) = history
 main = do
   contents <- (head <$> getArgs) >>= readFile
   let moveResults = move (parseInstructions contents)
+  putStr "Ending Location: " >> (print $ absolutePostion <$> moveResults)
   case firstDoubleVisit . locHist <$> moveResults of
     Left s -> print s
-    Right (Just coords) -> (print moveResults) >> print "\n" >> (print $ sumCoord coords)
+    Right (Just coords) -> putStr "first passed twice: " >> (print $ sumCoord coords)
     otherwise -> print "error"
