@@ -3,54 +3,54 @@ import System.IO (readFile)
 import System.Environment (getArgs)
 
 data Instruction = U | D | L | R deriving (Eq, Show)
-type Coordinate = (Int, Int) -- (x,y)
-type Keypad = (Int, Int) -- (rows, cols)
+type Coord = (Int, Int) -- (x,y)
 
-bindCoordinates :: Coordinate -> Keypad -> Coordinate
-bindCoordinates (x,y) (rows,cols) = (within cols x, within rows y)
-  where within a b = max 0 (min a b)
+updateCoord :: Instruction -> Coord -> Coord
+updateCoord U (x,y) = (x, y + 1)
+updateCoord D (x,y) = (x, y - 1)
+updateCoord L (x,y) = (x - 1, y)
+updateCoord R (x,y) = (x + 1, y)
 
-instructionTransform :: Instruction -> Coordinate -> Coordinate
-instructionTransform U (x,y) = (x, y - 1)
-instructionTransform D (x,y) = (x, y + 1)
-instructionTransform L (x,y) = (x - 1, y)
-instructionTransform R (x,y) = (x + 1, y)
+parseInstr :: Char -> Either String Instruction
+parseInstr 'U' = Right U
+parseInstr 'D' = Right D
+parseInstr 'L' = Right L
+parseInstr 'R' = Right R
+parseInstr badInstr = Left (badInstr : ": invalid instruction")
 
-bindTransform :: Keypad -> Instruction -> Coordinate -> Coordinate
-bindTransform a b c = (instructionTransform b c) `bindCoordinates` a
+parseFile :: String -> Either String [[Instruction]]
+parseFile = mapM (mapM parseInstr) . lines
 
-parseInstructionRow :: String -> Either String [Instruction]
-parseInstructionRow = sequence . map (toInstr . toUpper)
-  where
-    toInstr 'U' = Right U
-    toInstr 'D' = Right D
-    toInstr 'L' = Right L
-    toInstr 'R' = Right R
-    toInstr instr = Left (instr : " is not a valid instruction")
+move :: Coord -> Instruction -> Coord
+move coord instr =
+  let coord' = updateCoord instr coord in
+    if inRange coord' then
+      coord'
+    else
+      coord
 
-applyInstructions :: Keypad -> Coordinate -> [Instruction] -> Coordinate
-applyInstructions k c instrs =
-  let update = moveCoord k in
-    foldl (flip update) c instrs
+moveRow :: Coord -> [Instruction] -> Coord
+moveRow = foldl move
 
-coordsToNum :: Keypad -> Coordinate -> Int
-coordsToNum k@(rows,cols) c =
-  let (x,y) = bindCoordinates c (rows-1, cols-1) in (y * cols) + x + 1
+buttonCoords :: Coord -> [[Instruction]] -> [Coord]
+buttonCoords = (tail .) . scanl moveRow
 
-move :: Int -> Instruction -> Int
-move current act =
-  coordsToNum (3,3) $ bindTransform (3,3) act (tupleFromIndex current)
+buttons :: Coord -> [[Instruction]] -> [Int]
+buttons = (map toNum .) . buttonCoords
 
-moveCoord :: Keypad -> Instruction -> Coordinate -> Coordinate
-moveCoord k i c = tupleFromIndex $ move (coordsToNum k c) i
+inRange :: Coord -> Bool
+inRange (x,y) = (x `elem` [0..2]) && (y `elem` [0..2])
 
-tupleFromIndex x =
-  let whichCol = (x - 1) `div` 3
-      whichRow = x - (whichCol * 3)
-  in (whichRow - 1, whichCol)
+toNum :: Coord -> Int
+toNum (x,y) = x + (y * 3) + 1
+
+toCoord :: Int -> Coord
+toCoord idx =
+  let idx' = idx - 1
+      row  = idx' `div` 3
+      col  = idx' `mod` 3
+  in (col, row)
 
 main = do
-  instructions <- lines <$> (head <$> getArgs >>= readFile)
-  let parsed = mapM parseInstructionRow instructions
-  let results = map (coordsToNum (3,3)) . tail <$> scanl (applyInstructions (3,3)) (1,1) <$> parsed
-  print $ concatMap show <$> results
+  instr <- (head <$> getArgs) >>= readFile
+  print $ concatMap show <$> buttons (1,1) <$> parseFile instr
