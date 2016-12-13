@@ -1,4 +1,6 @@
 {-# LANGUAGE TupleSections #-}
+import Data.Maybe
+import Data.Char
 import System.Environment
 import Data.List.Split
 import Data.List
@@ -9,43 +11,33 @@ data CompressTree = CompressLeaf String | CompressNode Int [CompressTree] derivi
 
 type CompressedDocument = [CompressTree]
 
-(.:) :: CompressTree -> CompressTree -> CompressTree
-s .: l@(CompressLeaf _ ) = CompressNode 1 [l, s]
-s .: l@(CompressNode n lst) = CompressNode n (s:lst)
-
-(.+) :: CompressTree -> CompressTree -> CompressTree
-x .+ y = CompressNode 1 [x, y]
-
-(.$) :: (CompressTree -> CompressTree) -> CompressTree -> CompressTree
-f .$ c@(CompressLeaf s) = f c
-f .$ (CompressNode x s) = CompressNode x (map f s)
-
-(.*) :: (String -> CompressTree) -> CompressTree -> CompressTree
-f .* (CompressLeaf s) = f s
-f .* (CompressNode x s) = CompressNode x $ map (f .*) s
-
-(.*.) :: (String -> String) -> CompressTree -> CompressTree
-f .*. (CompressLeaf s) = CompressLeaf (f s)
-f .*. (CompressNode x s) = CompressNode x $ map (f .*.) s
-
 leaf = CompressLeaf
 node = (`CompressNode` [])
 
 emptyTree = CompressLeaf ""
 
-mkNode :: String -> [CompressTree]
-mkNode s = map (explodeNode . nodeFromSplit) (splitNodes s)
+mkNode' :: String -> [CompressTree]
+mkNode' s = map nodeFromSplit (splitNodes s)
+
+mkNode = concatMap explodeNode . mkNode'
 
 nodeFromSplit :: String -> CompressTree
 nodeFromSplit s =
   case parseHdr s of
     Just (hdrLen, takeLen, mult) ->
-      explodeNode $ CompressNode mult [(CompressLeaf (drop hdrLen s))]
+      CompressNode mult [(CompressLeaf (drop hdrLen s))]
     Nothing -> CompressLeaf s
 
-explodeNode :: CompressTree -> CompressTree
-explodeNode (CompressLeaf s) = nodeFromSplit s
-explodeNode (CompressNode x s) = CompressNode x (map explodeNode s)
+explodeNode :: CompressTree -> [CompressTree]
+explodeNode (CompressNode x s) = [CompressNode x (concatMap explodeNode s)]
+explodeNode (CompressLeaf "") = [CompressLeaf ""]
+explodeNode (CompressLeaf s) =
+  let nodes = splitNodes s in
+    if (length nodes == 1) && (isNothing $ parseHdr (nodes !! 0)) then
+      [CompressLeaf s]
+    else
+      mkNode s
+
 
 splitNodes :: String -> [String]
 splitNodes = reverse . filter (not . null) . splitNodes' []
@@ -115,4 +107,4 @@ expandedLen = docSize . mkNode
 docLength :: CompressedDocument -> Int
 docLength = sum . map sumExpansion
 
-main = expandedLen <$> ((head <$> getArgs) >>= readFile) >>= print
+main = (expandedLen . filter (not . isSpace)) <$> ((head <$> getArgs) >>= readFile) >>= print
